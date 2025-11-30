@@ -35,6 +35,32 @@ CONSENSUS_TIMEOUT_SECONDS = 120
 DATA_DIR = Path(os.getenv("DATA_DIR", "./data"))
 DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR}/council.db"
 
+# File uploads configuration
+UPLOADS_DIR = DATA_DIR / "uploads"
+MAX_FILES_PER_MESSAGE = 15
+MAX_FILE_SIZE_MB = 5
+MAX_TOTAL_SIZE_MB = 25
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+MAX_TOTAL_SIZE_BYTES = MAX_TOTAL_SIZE_MB * 1024 * 1024
+
+# Allowed file extensions and MIME types
+ALLOWED_EXTENSIONS = {
+    # Documents
+    ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+    # Text/Code
+    ".txt", ".md", ".json", ".xml", ".csv", ".yaml", ".yml",
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".scss",
+    ".java", ".c", ".cpp", ".h", ".hpp", ".cs", ".go", ".rs", ".rb",
+    ".php", ".sql", ".sh", ".bash", ".zsh", ".ps1",
+    # Config
+    ".ini", ".cfg", ".conf", ".env", ".toml",
+}
+
+# Max characters to extract from each file for context
+MAX_CHARS_PER_FILE = 10000
+MAX_TOTAL_CONTEXT_CHARS = 50000
+
 # Ensure data directory exists
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 

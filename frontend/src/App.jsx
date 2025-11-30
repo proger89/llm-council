@@ -77,7 +77,11 @@ function App() {
     }
   }, [currentChat?.id]);
 
-  const handleSendMessage = useCallback(async (content, isRetry = false) => {
+  const handleSendMessage = useCallback(async (content, filesOrRetry = false) => {
+    // Support both old signature (content, isRetry) and new (content, files)
+    const isRetry = filesOrRetry === true;
+    const files = Array.isArray(filesOrRetry) ? filesOrRetry : [];
+    
     if (!currentChat || isLoading) return;
 
     setIsLoading(true);
@@ -89,6 +93,13 @@ function App() {
         role: 'user',
         content,
         created_at: new Date().toISOString(),
+        // Add file info for display
+        attachments: files.map(f => ({
+          id: `temp-${f.name}`,
+          filename: f.name,
+          size: f.size < 1024 ? `${f.size} B` : f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${(f.size / (1024 * 1024)).toFixed(1)} MB`,
+          mime_type: f.type
+        }))
       };
       setMessages(prev => [...prev, userMessage]);
     }
@@ -126,8 +137,9 @@ function App() {
       consensus: null,
     };
 
-    // Send message with streaming
+    // Send message with streaming (with files if any)
     sendMessageStream(chatToUse.id, content, {
+      files,
       onProgress: (progress) => {
         setDiscussionState(prev => {
           const newState = {

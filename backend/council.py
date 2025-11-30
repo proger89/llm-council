@@ -131,7 +131,8 @@ class CouncilOrchestrator:
         self,
         user_query: str,
         chat_history: list[dict] = None,
-        on_progress: Optional[callable] = None
+        on_progress: Optional[callable] = None,
+        files_context: str = ""
     ) -> list[ModelMessageResponse]:
         """
         Stage 1: Get initial responses from all models in parallel.
@@ -148,10 +149,12 @@ class CouncilOrchestrator:
         # Prepare parallel requests
         requests = []
         for model in self.models:
-            # Build system prompt with TOON history
+            # Build system prompt with TOON history and files context
             system_content = INITIAL_SYSTEM_PROMPT.format(model_name=model["name"])
             if history_toon:
                 system_content += f"\n\n{history_toon}"
+            if files_context:
+                system_content += f"\n\n{files_context}"
             
             messages = [
                 {"role": "system", "content": system_content},
@@ -384,7 +387,8 @@ class CouncilOrchestrator:
         self,
         user_query: str,
         chat_history: list[dict] = None,
-        on_progress: Optional[callable] = None
+        on_progress: Optional[callable] = None,
+        files_context: str = ""
     ) -> dict:
         """
         Run the complete council process:
@@ -396,9 +400,12 @@ class CouncilOrchestrator:
             user_query: Current user message
             chat_history: Previous messages in chat for context
             on_progress: Callback for progress updates
+            files_context: Extracted text from uploaded files
         """
         # Stage 1: Initial responses
-        initial_responses = await self.run_initial_stage(user_query, chat_history, on_progress)
+        initial_responses = await self.run_initial_stage(
+            user_query, chat_history, on_progress, files_context
+        )
 
         # Stage 2: Discussion rounds
         discussion_rounds = []

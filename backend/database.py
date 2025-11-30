@@ -42,6 +42,23 @@ class Message(Base):
     discussion_data = Column(JSON, nullable=True)
 
     chat = relationship("Chat", back_populates="messages")
+    attachments = relationship("Attachment", back_populates="message", cascade="all, delete-orphan")
+
+
+class Attachment(Base):
+    """File attachment model."""
+    __tablename__ = "attachments"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    message_id = Column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    filename = Column(String(255), nullable=False)  # Original filename
+    stored_filename = Column(String(255), nullable=False)  # Filename on disk (with UUID)
+    mime_type = Column(String(100), nullable=False)
+    size = Column(String(20), nullable=False)  # Human-readable size
+    size_bytes = Column(String(20), nullable=False)  # Actual size in bytes
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    message = relationship("Message", back_populates="attachments")
 
 
 # Database engine and session

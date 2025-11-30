@@ -86,6 +86,17 @@ class MessageCreate(BaseModel):
     content: str
 
 
+class AttachmentResponse(BaseModel):
+    """Attachment response."""
+    id: str
+    filename: str
+    mime_type: str
+    size: str
+    
+    class Config:
+        from_attributes = True
+
+
 class ModelMessageResponse(BaseModel):
     """Individual model's response in a discussion."""
     model_id: str
@@ -111,6 +122,9 @@ class MessageResponse(BaseModel):
     role: MessageRole
     content: str
     created_at: datetime
+    
+    # Attachments
+    attachments: list[AttachmentResponse] = Field(default_factory=list)
     
     # Discussion metadata (only for assistant messages)
     stage: Optional[StageType] = None

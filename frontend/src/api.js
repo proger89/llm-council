@@ -88,6 +88,7 @@ export async function sendMessage(chatId, content) {
  * Send a message with SSE streaming.
  * @param {string} chatId - Chat ID
  * @param {string} content - Message content
+ * @param {File[]} files - Optional array of files to attach
  * @param {function} onProgress - Called with progress events
  * @param {function} onInitialResponses - Called with initial responses
  * @param {function} onDiscussionRound - Called with each discussion round
@@ -99,6 +100,7 @@ export function sendMessageStream(
   chatId,
   content,
   {
+    files = [],
     onProgress,
     onInitialResponses,
     onDiscussionRound,
@@ -109,12 +111,19 @@ export function sendMessageStream(
 ) {
   const controller = new AbortController();
 
+  // Build FormData for multipart upload
+  const formData = new FormData();
+  formData.append('content', content);
+  
+  // Append files if any
+  for (const file of files) {
+    formData.append('files', file);
+  }
+
   fetch(`${API_BASE}/chats/${chatId}/messages/stream`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
+    // Don't set Content-Type - browser will set it with boundary for FormData
+    body: formData,
     signal: controller.signal,
   })
     .then(async (response) => {

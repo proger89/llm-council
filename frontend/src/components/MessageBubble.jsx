@@ -1,9 +1,22 @@
 import { memo, useState, useCallback } from 'react';
-import { User, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
+import { User, ChevronDown, ChevronRight, Copy, Check, FileText, FileCode, FileSpreadsheet, File, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+// Get icon for file type
+const getFileIcon = (filename) => {
+  const ext = filename?.split('.').pop().toLowerCase() || '';
+  const codeExts = ['py', 'js', 'ts', 'jsx', 'tsx', 'java', 'c', 'cpp', 'h', 'cs', 'go', 'rs', 'rb', 'php', 'html', 'css', 'sql'];
+  const spreadsheetExts = ['xlsx', 'xls', 'csv'];
+  const docExts = ['pdf', 'doc', 'docx', 'txt', 'md'];
+  
+  if (codeExts.includes(ext)) return FileCode;
+  if (spreadsheetExts.includes(ext)) return FileSpreadsheet;
+  if (docExts.includes(ext)) return FileText;
+  return File;
+};
 
 // Memoized markdown components to avoid recreation on each render
 const markdownComponents = {
@@ -117,6 +130,7 @@ const markdownComponents = {
 const MessageBubble = memo(function MessageBubble({ message, isExpanded, onToggleExpand }) {
   const isUser = message.role === 'user';
   const hasDiscussion = message.role === 'assistant' && message.discussion_data;
+  const hasAttachments = message.attachments && message.attachments.length > 0;
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -128,6 +142,12 @@ const MessageBubble = memo(function MessageBubble({ message, isExpanded, onToggl
       console.error('Failed to copy:', err);
     }
   }, [message.content]);
+
+  const handleDownload = useCallback((attachment) => {
+    // Build download URL
+    const url = `/api/files/${message.chat_id}/${message.id}/${attachment.id}`;
+    window.open(url, '_blank');
+  }, [message.chat_id, message.id]);
 
   return (
     <div className={`mb-6 ${isUser ? 'flex justify-end' : ''}`}>
@@ -163,6 +183,35 @@ const MessageBubble = memo(function MessageBubble({ message, isExpanded, onToggl
               })}
             </span>
           </div>
+
+          {/* Attachments */}
+          {hasAttachments && (
+            <div className={`flex flex-wrap gap-2 mb-2 ${isUser ? 'justify-end' : ''}`}>
+              {message.attachments.map((attachment, index) => {
+                const Icon = getFileIcon(attachment.filename);
+                const isTemp = attachment.id?.startsWith('temp-');
+                return (
+                  <div
+                    key={attachment.id || index}
+                    className={`flex items-center gap-2 px-3 py-1.5 bg-council-surface rounded-lg text-sm border border-council-border ${
+                      !isTemp ? 'cursor-pointer hover:bg-council-hover' : ''
+                    }`}
+                    onClick={() => !isTemp && handleDownload(attachment)}
+                    title={!isTemp ? 'Скачать файл' : 'Файл загружается...'}
+                  >
+                    <Icon size={14} className="text-council-accent" />
+                    <span className="truncate max-w-[150px]">{attachment.filename}</span>
+                    <span className="text-council-text-secondary text-xs">
+                      {attachment.size}
+                    </span>
+                    {!isTemp && (
+                      <Download size={12} className="text-council-text-secondary" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Message content */}
           <div className={`${

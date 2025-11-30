@@ -3,18 +3,26 @@ FastAPI application for LLM Council.
 """
 import json
 import asyncio
+import uuid
+import os
+from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
-from .database import init_db, get_session, async_session, Chat, Message
+from .config import (
+    COUNCIL_MODELS, CHAIRMAN_MODEL, UPLOADS_DIR,
+    MAX_FILES_PER_MESSAGE, MAX_FILE_SIZE_BYTES, MAX_TOTAL_SIZE_BYTES,
+    ALLOWED_EXTENSIONS
+)
+from .database import init_db, get_session, async_session, Chat, Message, Attachment
 from .schemas import (
     ChatCreate,
     ChatResponse,
@@ -24,8 +32,10 @@ from .schemas import (
     MessageRole,
     StageType,
     StageProgressEvent,
+    AttachmentResponse,
 )
 from .council import orchestrator
+from .file_extractor import extract_text_from_files
 
 
 @asynccontextmanager
@@ -50,6 +60,87 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Helper functions for file handling
+def format_file_size(size_bytes: int) -> str:
+    """Format file size to human-readable format."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
+def get_file_extension(filename: str) -> str:
+    """Get file extension in lowercase."""
+    return Path(filename).suffix.lower()
+
+
+async def validate_and_save_files(
+    files: list[UploadFile],
+    chat_id: str,
+    message_id: str
+) -> list[dict]:
+    """Validate and save uploaded files."""
+    if len(files) > MAX_FILES_PER_MESSAGE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Максимум {MAX_FILES_PER_MESSAGE} файлов на сообщение"
+        )
+    
+    saved_files = []
+    total_size = 0
+    
+    # Create directory for this message's files
+    message_dir = UPLOADS_DIR / chat_id / message_id
+    message_dir.mkdir(parents=True, exist_ok=True)
+    
+    for file in files:
+        # Check extension
+        ext = get_file_extension(file.filename)
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Тип файла '{ext}' не поддерживается. Разрешены: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+            )
+        
+        # Read content to check size
+        content = await file.read()
+        file_size = len(content)
+        
+        if file_size > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Файл '{file.filename}' слишком большой ({format_file_size(file_size)}). Максимум: {format_file_size(MAX_FILE_SIZE_BYTES)}"
+            )
+        
+        total_size += file_size
+        if total_size > MAX_TOTAL_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Общий размер файлов превышает лимит ({format_file_size(MAX_TOTAL_SIZE_BYTES)})"
+            )
+        
+        # Generate unique filename
+        stored_filename = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+        file_path = message_dir / stored_filename
+        
+        # Save file
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        saved_files.append({
+            "filename": file.filename,
+            "stored_filename": stored_filename,
+            "mime_type": file.content_type or "application/octet-stream",
+            "size": format_file_size(file_size),
+            "size_bytes": str(file_size),
+            "path": str(file_path)
+        })
+    
+    return saved_files
 
 
 # Health check
@@ -114,9 +205,10 @@ async def get_chat(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    # Get messages
+    # Get messages with attachments
     msg_result = await session.execute(
         select(Message)
+        .options(selectinload(Message.attachments))
         .where(Message.chat_id == chat_id)
         .order_by(Message.created_at)
     )
@@ -125,12 +217,24 @@ async def get_chat(
     # Convert to response format
     msg_responses = []
     for msg in messages:
+        # Convert attachments
+        attachments = [
+            AttachmentResponse(
+                id=att.id,
+                filename=att.filename,
+                mime_type=att.mime_type,
+                size=att.size
+            )
+            for att in msg.attachments
+        ]
+        
         msg_resp = MessageResponse(
             id=msg.id,
             chat_id=msg.chat_id,
             role=msg.role,
             content=msg.content,
             created_at=msg.created_at,
+            attachments=attachments,
         )
         if msg.discussion_data:
             data = msg.discussion_data
@@ -196,15 +300,45 @@ async def update_chat(
     )
 
 
-# Message/Council endpoints
+# File download endpoint
+@app.get("/api/files/{chat_id}/{message_id}/{attachment_id}")
+async def download_file(
+    chat_id: str,
+    message_id: str,
+    attachment_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Download an attachment file."""
+    result = await session.execute(
+        select(Attachment)
+        .where(Attachment.id == attachment_id)
+        .where(Attachment.message_id == message_id)
+    )
+    attachment = result.scalar_one_or_none()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+    
+    file_path = UPLOADS_DIR / chat_id / message_id / attachment.stored_filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Файл не найден на диске")
+    
+    return FileResponse(
+        path=file_path,
+        filename=attachment.filename,
+        media_type=attachment.mime_type
+    )
+
+
+# Message/Council endpoints with file support
 @app.post("/api/chats/{chat_id}/messages/stream")
 async def send_message_stream(
     chat_id: str,
-    message_data: MessageCreate,
+    content: str = Form(...),
+    files: list[UploadFile] = File(default=[]),
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Send a message and stream the council discussion response.
+    Send a message with optional file attachments and stream the council discussion response.
     Returns Server-Sent Events (SSE).
     """
     # Verify chat exists
@@ -215,19 +349,45 @@ async def send_message_stream(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
+    # Create message ID first for file storage
+    message_id = str(uuid.uuid4())
+    
+    # Validate and save files if any
+    saved_files = []
+    files_context = ""
+    if files and files[0].filename:  # Check if files were actually uploaded
+        saved_files = await validate_and_save_files(files, chat_id, message_id)
+        # Extract text from files for context
+        files_context = await extract_text_from_files(saved_files)
+
     # Save user message
     user_message = Message(
+        id=message_id,
         chat_id=chat_id,
         role=MessageRole.USER,
-        content=message_data.content
+        content=content
     )
     session.add(user_message)
+    await session.flush()
+    
+    # Save attachments
+    for file_info in saved_files:
+        attachment = Attachment(
+            message_id=message_id,
+            filename=file_info["filename"],
+            stored_filename=file_info["stored_filename"],
+            mime_type=file_info["mime_type"],
+            size=file_info["size"],
+            size_bytes=file_info["size_bytes"]
+        )
+        session.add(attachment)
+    
     await session.commit()
 
     # Update chat title if it's the first message
     if chat.title in ("New Chat", "Новый чат"):
         # Use first 50 chars of message as title
-        chat.title = message_data.content[:50] + ("..." if len(message_data.content) > 50 else "")
+        chat.title = content[:50] + ("..." if len(content) > 50 else "")
         await session.commit()
 
     # Load chat history for context (last 10 messages)
@@ -257,9 +417,9 @@ async def send_message_stream(
 
         # Start council discussion
         try:
-            # Run council in background task with chat history
+            # Run council in background task with chat history and files context
             council_task = asyncio.create_task(
-                orchestrator.run_full_council(message_data.content, chat_history, progress_callback)
+                orchestrator.run_full_council(content, chat_history, progress_callback, files_context)
             )
 
             # Stream progress events
