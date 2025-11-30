@@ -72,19 +72,21 @@ function App() {
     }
   };
 
-  const handleSendMessage = useCallback(async (content) => {
+  const handleSendMessage = useCallback(async (content, isRetry = false) => {
     if (!currentChat || isLoading) return;
 
     setIsLoading(true);
     
-    // Add user message immediately
-    const userMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content,
-      created_at: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, userMessage]);
+    // Add user message immediately (skip if retry)
+    if (!isRetry) {
+      const userMessage = {
+        id: `temp-${Date.now()}`,
+        role: 'user',
+        content,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMessage]);
+    }
 
     // If chat is temporary, create it in DB first
     let chatToUse = currentChat;
@@ -220,6 +222,36 @@ function App() {
     });
   }, [currentChat, isLoading]);
 
+  const handleRetry = useCallback(() => {
+    if (isLoading || messages.length < 1) return;
+
+    // Find the last user message
+    let lastUserMessageIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserMessageIndex = i;
+        break;
+      }
+    }
+
+    if (lastUserMessageIndex === -1) return;
+
+    const lastUserContent = messages[lastUserMessageIndex].content;
+
+    // Remove only the last assistant message (keep user message)
+    setMessages(prev => {
+      // Find and remove the last assistant message
+      const lastAssistantIndex = prev.map(m => m.role).lastIndexOf('assistant');
+      if (lastAssistantIndex !== -1) {
+        return [...prev.slice(0, lastAssistantIndex), ...prev.slice(lastAssistantIndex + 1)];
+      }
+      return prev;
+    });
+
+    // Re-send the message (with isRetry=true to skip adding user message)
+    handleSendMessage(lastUserContent, true);
+  }, [messages, isLoading, handleSendMessage]);
+
   return (
     <div className="flex h-screen bg-council-bg">
       {/* Sidebar */}
@@ -242,6 +274,7 @@ function App() {
             discussionState={discussionState}
             isLoading={isLoading}
             onSendMessage={handleSendMessage}
+            onRetry={handleRetry}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             isSidebarOpen={isSidebarOpen}
           />

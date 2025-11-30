@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Menu, Send, Loader2 } from 'lucide-react';
+import { Menu, Send, Loader2, RotateCcw } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import DiscussionPanel from './DiscussionPanel';
 import ProgressIndicator from './ProgressIndicator';
@@ -10,6 +10,7 @@ function ChatView({
   discussionState, 
   isLoading, 
   onSendMessage, 
+  onRetry,
   onToggleSidebar,
   isSidebarOpen 
 }) {
@@ -68,7 +69,7 @@ function ChatView({
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-4 py-6">
-          {messages.map((message, index) => (
+          {messages.map((message) => (
             <div key={message.id} className="animate-fade-in">
               <MessageBubble
                 message={message}
@@ -86,6 +87,20 @@ function ChatView({
               )}
             </div>
           ))}
+
+          {/* Retry button - show if there's at least one assistant message and not loading */}
+          {!isLoading && onRetry && messages.some(m => m.role === 'assistant') && (
+            <div className="flex justify-start ml-11 mb-4">
+              <button
+                onClick={onRetry}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-council-text-secondary hover:text-council-accent bg-council-surface hover:bg-council-hover rounded-lg transition-colors border border-council-border"
+                title="Повторить запрос"
+              >
+                <RotateCcw size={14} />
+                <span>Повторить</span>
+              </button>
+            </div>
+          )}
 
           {/* Loading state with progress */}
           {isLoading && discussionState && (
