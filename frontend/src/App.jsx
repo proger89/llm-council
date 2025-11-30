@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import WelcomeScreen from './components/WelcomeScreen';
@@ -19,22 +19,27 @@ function App() {
   useEffect(() => {
     discussionStateRef.current = discussionState;
   }, [discussionState]);
+  
+  // Memoize toggle sidebar callback
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen(prev => !prev);
+  }, []);
 
   // Load chats on mount
   useEffect(() => {
     loadChats();
   }, []);
 
-  const loadChats = async () => {
+  const loadChats = useCallback(async () => {
     try {
       const data = await listChats();
       setChats(data);
     } catch (error) {
       console.error('Failed to load chats:', error);
     }
-  };
+  }, []);
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     // Create temporary chat (not saved to DB yet)
     const tempChat = {
       id: `temp-${Date.now()}`,
@@ -46,9 +51,9 @@ function App() {
     setCurrentChat(tempChat);
     setMessages([]);
     setDiscussionState(null);
-  };
+  }, []);
 
-  const handleSelectChat = async (chatId) => {
+  const handleSelectChat = useCallback(async (chatId) => {
     try {
       const chatData = await getChat(chatId);
       setCurrentChat(chatData);
@@ -57,9 +62,9 @@ function App() {
     } catch (error) {
       console.error('Failed to load chat:', error);
     }
-  };
+  }, []);
 
-  const handleDeleteChat = async (chatId) => {
+  const handleDeleteChat = useCallback(async (chatId) => {
     try {
       await deleteChat(chatId);
       setChats(prev => prev.filter(c => c.id !== chatId));
@@ -70,7 +75,7 @@ function App() {
     } catch (error) {
       console.error('Failed to delete chat:', error);
     }
-  };
+  }, [currentChat?.id]);
 
   const handleSendMessage = useCallback(async (content, isRetry = false) => {
     if (!currentChat || isLoading) return;
@@ -220,7 +225,7 @@ function App() {
         setIsLoading(false);
       },
     });
-  }, [currentChat, isLoading]);
+  }, [currentChat, isLoading, loadChats]);
 
   const handleRetry = useCallback(() => {
     if (isLoading || messages.length < 1) return;
@@ -252,14 +257,20 @@ function App() {
     handleSendMessage(lastUserContent, true);
   }, [messages, isLoading, handleSendMessage]);
 
+  // Memoize filtered chats to avoid recalculation
+  const filteredChats = useMemo(() => 
+    chats.filter(c => !c.isTemporary), 
+    [chats]
+  );
+
   return (
     <div className="flex h-screen bg-council-bg">
       {/* Sidebar */}
       <Sidebar
-        chats={chats.filter(c => !c.isTemporary)}
+        chats={filteredChats}
         currentChatId={currentChat?.id}
         isOpen={isSidebarOpen}
-        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        onToggle={toggleSidebar}
         onNewChat={handleNewChat}
         onSelectChat={handleSelectChat}
         onDeleteChat={handleDeleteChat}
@@ -275,13 +286,13 @@ function App() {
             isLoading={isLoading}
             onSendMessage={handleSendMessage}
             onRetry={handleRetry}
-            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+            onToggleSidebar={toggleSidebar}
             isSidebarOpen={isSidebarOpen}
           />
         ) : (
           <WelcomeScreen 
             onNewChat={handleNewChat}
-            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+            onToggleSidebar={toggleSidebar}
             isSidebarOpen={isSidebarOpen}
           />
         )}

@@ -1,28 +1,36 @@
+import { memo, useMemo, useCallback } from 'react';
 import { Loader2, CheckCircle, Circle } from 'lucide-react';
 
-function ProgressIndicator({ discussionState }) {
+// Static stages definition - outside component to avoid recreation
+const STAGES = [
+  { id: 'initial', label: 'Начальные ответы', description: 'Получаем мнения от всех моделей' },
+  { id: 'discussion', label: 'Обсуждение', description: 'Модели анализируют ответы друг друга' },
+  { id: 'consensus', label: 'Консенсус', description: 'Председатель формирует итоговый ответ' },
+];
+
+const STAGE_ORDER = ['initial', 'discussion', 'consensus'];
+
+const MODELS = [
+  { name: 'GPT-5.1', key: 'gpt', color: 'bg-council-gpt' },
+  { name: 'Gemini 3', key: 'gemini', color: 'bg-council-gemini' }
+];
+
+const ProgressIndicator = memo(function ProgressIndicator({ discussionState }) {
   const { stage, progress } = discussionState || {};
 
-  const stages = [
-    { id: 'initial', label: 'Начальные ответы', description: 'Получаем мнения от всех моделей' },
-    { id: 'discussion', label: 'Обсуждение', description: 'Модели анализируют ответы друг друга' },
-    { id: 'consensus', label: 'Консенсус', description: 'Председатель формирует итоговый ответ' },
-  ];
-
-  const getStageStatus = (stageId) => {
-    const stageOrder = ['initial', 'discussion', 'consensus'];
-    const currentIndex = stageOrder.indexOf(stage);
-    const targetIndex = stageOrder.indexOf(stageId);
+  const getStageStatus = useCallback((stageId) => {
+    const currentIndex = STAGE_ORDER.indexOf(stage);
+    const targetIndex = STAGE_ORDER.indexOf(stageId);
 
     if (currentIndex > targetIndex) return 'completed';
     if (currentIndex === targetIndex) return 'active';
     return 'pending';
-  };
+  }, [stage]);
 
-  const getModelProgress = (stageId) => {
+  const getModelProgress = useCallback((stageId) => {
     if (!progress) return [];
     return progress.filter(p => p.stage === stageId && p.status === 'completed');
-  };
+  }, [progress]);
 
   return (
     <div className="ml-11 p-4 rounded-xl bg-council-sidebar border border-council-border">
@@ -32,7 +40,7 @@ function ProgressIndicator({ discussionState }) {
       </div>
 
       <div className="space-y-4">
-        {stages.map((s, index) => {
+        {STAGES.map((s, index) => {
           const status = getStageStatus(s.id);
           const modelProgress = getModelProgress(s.id);
 
@@ -52,7 +60,7 @@ function ProgressIndicator({ discussionState }) {
                 ) : (
                   <Circle size={20} className="text-council-text-secondary" />
                 )}
-                {index < stages.length - 1 && (
+                {index < STAGES.length - 1 && (
                   <div className={`w-0.5 flex-1 mt-1 ${
                     status === 'completed' ? 'bg-council-accent' : 'bg-council-border'
                   }`} />
@@ -74,10 +82,7 @@ function ProgressIndicator({ discussionState }) {
                 {/* Model progress indicators */}
                 {status === 'active' && (
                   <div className="flex gap-2 mt-2">
-                    {[
-                      { name: 'GPT-5.1', key: 'gpt', color: 'bg-council-gpt' },
-                      { name: 'Gemini 3', key: 'gemini', color: 'bg-council-gemini' }
-                    ].map((model) => {
+                    {MODELS.map((model) => {
                       const isComplete = modelProgress.some(
                         p => p.model_name?.toLowerCase().includes(model.key)
                       );
@@ -105,6 +110,6 @@ function ProgressIndicator({ discussionState }) {
       </div>
     </div>
   );
-}
+});
 
 export default ProgressIndicator;

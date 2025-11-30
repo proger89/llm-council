@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, memo, useMemo, useCallback } from 'react';
 import { MessageSquarePlus, Trash2, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
 
-function Sidebar({ 
+const Sidebar = memo(function Sidebar({ 
   chats, 
   currentChatId, 
   isOpen, 
@@ -12,7 +12,7 @@ function Sidebar({
 }) {
   const [hoveredChat, setHoveredChat] = useState(null);
 
-  const formatDate = (dateStr) => {
+  const formatDate = useCallback((dateStr) => {
     const date = new Date(dateStr);
     const now = new Date();
     const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
@@ -21,17 +21,19 @@ function Sidebar({
     if (diffDays === 1) return 'Вчера';
     if (diffDays < 7) return `${diffDays} дн. назад`;
     return date.toLocaleDateString('ru-RU');
-  };
+  }, []);
 
-  // Group chats by date
-  const groupedChats = chats.reduce((groups, chat) => {
-    const dateLabel = formatDate(chat.updated_at);
-    if (!groups[dateLabel]) {
-      groups[dateLabel] = [];
-    }
-    groups[dateLabel].push(chat);
-    return groups;
-  }, {});
+  // Group chats by date - memoized
+  const groupedChats = useMemo(() => {
+    return chats.reduce((groups, chat) => {
+      const dateLabel = formatDate(chat.updated_at);
+      if (!groups[dateLabel]) {
+        groups[dateLabel] = [];
+      }
+      groups[dateLabel].push(chat);
+      return groups;
+    }, {});
+  }, [chats, formatDate]);
 
   return (
     <>
@@ -127,6 +129,6 @@ function Sidebar({
       )}
     </>
   );
-}
+});
 
 export default Sidebar;

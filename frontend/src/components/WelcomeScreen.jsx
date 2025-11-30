@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { Menu, Sparkles, Users, CheckCircle2 } from 'lucide-react';
 
-function WelcomeScreen({ onNewChat, onToggleSidebar, isSidebarOpen }) {
+const WelcomeScreen = memo(function WelcomeScreen({ onNewChat, onToggleSidebar, isSidebarOpen }) {
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
@@ -95,6 +96,6 @@ function WelcomeScreen({ onNewChat, onToggleSidebar, isSidebarOpen }) {
       </div>
     </div>
   );
-}
+});
 
 export default WelcomeScreen;

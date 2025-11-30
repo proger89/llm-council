@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { ChevronDown, ChevronRight, CheckCircle, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-function DiscussionPanel({ discussionData, isLive = false }) {
+const DiscussionPanel = memo(function DiscussionPanel({ discussionData, isLive = false }) {
   const [activeTab, setActiveTab] = useState('initial');
   const [expandedResponse, setExpandedResponse] = useState(null);
 
@@ -224,6 +224,6 @@ function DiscussionPanel({ discussionData, isLive = false }) {
       </div>
     </div>
   );
-}
+});
 
 export default DiscussionPanel;
